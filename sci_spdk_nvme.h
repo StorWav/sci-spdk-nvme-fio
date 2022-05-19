@@ -69,6 +69,8 @@ struct nvme_dummy_dev_t {
 	int fd;
 	int cpu;
 	uint64_t ctx_id;	/* assigned from sci front-end */
+	uint64_t ns_size;
+	uint32_t sector_size;
 };
 
 #endif	/* _SCI_SPDK_NVME_H */

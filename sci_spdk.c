@@ -287,7 +287,7 @@ static inline void sci_open_nvme(const char *file_name, int fd, const char *sysc
 	}
 }
 
-static inline int sci_find_nvme(const char *file_name)
+static inline struct nvme_dummy_dev_t *sci_find_nvme(const char *file_name)
 {
 	struct nvme_dummy_dev_t *nvme_devs = spdk_get_nvme_devices();
 	
@@ -296,10 +296,10 @@ static inline int sci_find_nvme(const char *file_name)
 		if (strcmp(file_name, nvme_devs[i].file_name) != 0)
 			continue;
 		
-		return 0;			
+		return &nvme_devs[i];
 	}
 	
-	return 1;
+	return NULL;
 }
 
 static inline void sci_associate_ctx_with_spdk_dev(uint64_t ctx_id, int fd, struct ctx_entry_t *ctx_entry)
@@ -318,6 +318,13 @@ static inline void sci_associate_ctx_with_spdk_dev(uint64_t ctx_id, int fd, stru
 		nvme_devs[i].ctx_id = ctx_id;
 		break;
 	}	
+}
+
+static inline void sci_set_dev_stat(struct nvme_dummy_dev_t *dev, struct stat *stat)
+{
+	stat->st_size = dev->ns_size;
+	stat->st_blksize = dev->sector_size;
+	stat->st_blocks = dev->ns_size/512;
 }
 
 static int
@@ -439,52 +446,31 @@ hook(long syscall_number,
 		sci_open_nvme((char *)arg1, *result, "SYS_openat");
 		return 0;
 	}
-	else if (syscall_number == SYS_stat)
+	else if (syscall_number == SYS_stat || syscall_number == SYS_lstat)
 	{
-		if (sci_find_nvme((char *)arg0) == 0)
+		struct nvme_dummy_dev_t *dev = sci_find_nvme((char *)arg0);
+		if (dev != NULL)
 		{
 			int cpu = -1;
-			int status;
 			struct stat *stat;
-			
-			status = syscall_no_intercept(SYS_getcpu, &cpu, NULL, NULL);
-			*result = syscall_no_intercept(SYS_stat, arg0, arg1);
+			syscall_no_intercept(SYS_getcpu, &cpu, NULL, NULL);
+			*result = syscall_no_intercept(syscall_number, arg0, arg1);
 			if (*result == 0)
 			{
 				stat = (struct stat *)arg1;
-				stat->st_size = 966367641600ULL;//536870912000ULL;//500G
-				stat->st_blocks = stat->st_size / 512;
+				sci_set_dev_stat(dev, stat);
 			}
-			SCI_SPDK_LOG(DBG_INFO, log_fd, ">>> SYS_stat: filename(%s), cpu(%d), stats(%lu,%lu,%lu)\n", 
+			SCI_SPDK_LOG(DBG_INFO, log_fd, ">>> %s: filename(%s), cpu(%d), stats(%lu,%lu,%lu)\n", 
+				syscall_number == SYS_stat ? "SYS_stat" : "SYS_lstat",
 				(char *)arg0, cpu, stat->st_size, stat->st_blksize, stat->st_blocks);
 			return 0;
-		}		
+		}
 	}
 	else if (syscall_number == SYS_fstat)
 	{
 		//int cpu = -1;
 		//syscall_no_intercept(SYS_getcpu, &cpu, NULL, NULL);
 		//SCI_SPDK_LOG(DBG_INFO, log_fd, ">>> SYS_fstat: fd=%ld, cpu(%d)\n", arg0, cpu);
-	}
-	else if (syscall_number == SYS_lstat)
-	{
-		if (sci_find_nvme((char *)arg0) == 0)
-		{
-			int cpu = -1;
-			int status;
-			struct stat *stat;
-			status = syscall_no_intercept(SYS_getcpu, &cpu, NULL, NULL);
-			*result = syscall_no_intercept(SYS_stat, arg0, arg1);
-			if (*result == 0)
-			{
-				stat = (struct stat *)arg1;
-				stat->st_size = 966367641600ULL;//536870912000ULL;//500G
-				stat->st_blocks = stat->st_size / 512;
-			}
-			SCI_SPDK_LOG(DBG_INFO, log_fd, ">>> SYS_lstat: filename(%s), cpu(%d), stats(%lu,%lu,%lu)\n", 
-				(char *)arg0, cpu, stat->st_size, stat->st_blksize, stat->st_blocks);
-			return 0;
-		}		
 	}
 	else if (syscall_number == SYS_clone)
 	{

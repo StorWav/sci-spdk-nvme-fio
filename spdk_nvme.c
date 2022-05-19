@@ -767,6 +767,16 @@ register_ns(struct spdk_nvme_ctrlr *ctrlr, struct spdk_nvme_ns *ns, char *dev_fn
 
 	ns_size = spdk_nvme_ns_get_size(ns);
 	sector_size = spdk_nvme_ns_get_sector_size(ns);
+	
+	for (int j=0; j<MAX_JOB_CNT; j++)
+	{
+		struct nvme_dummy_dev_t *dev = &nvme_devs[j];
+		if (strcmp(dev->file_name, dev_fn) != 0)
+			continue;
+		dev->ns_size = ns_size;
+		dev->sector_size = sector_size;
+		break;
+	}
 
 	if (ns_size < fio_io_size || sector_size > fio_io_size) {
 		printf("WARNING: controller %-20.20s (%-20.20s) ns %u has invalid "
