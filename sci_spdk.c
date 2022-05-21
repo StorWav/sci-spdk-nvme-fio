@@ -482,6 +482,11 @@ hook(long syscall_number,
 		
 		SCI_SPDK_LOG(DBG_INFO, log_fd, ">>> SYS_clone: pid(%p) child(%p), cpu(%d)\n", (void *)arg2, (void *)arg3, cpu);
 	}
+	else if (syscall_number == SYS_clone3)
+	{
+		*result = -ENOSYS;
+		return 0;
+	}
 
 	return 1;
 }

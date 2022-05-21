@@ -5,7 +5,7 @@ sci-spdk-nvme.so is a useful library to intercept system call as well as memory 
 The complete procedures to build and run sci-spdk-nvme enabled FIO is provided below. For more technical details please visit my Medium article [Boost NVMe IOPS from 4M to 14.5M via System Call Interception](https://medium.com/@colinzhu/boost-nvme-iops-from-4m-to-14-5m-via-system-call-interception-8e27da4aed9a)
 
 ## Build Procedures for Ubuntu
-Following procedures have been tested for version 20.04.4.
+Following procedures have been tested for version 20.04.4 and 22.04. Some special tweaks are necessary for 22.04 (see step 3 and 4).
 
 ### 0. Installation directories
 - Use your home directory ```~/``` (in my case is ```/home/czhu/```) to install ```syscall_intercept```, ```spdk```, and ```sci-spdk-nvme``` in the subsequent steps mentioned below.
@@ -54,6 +54,7 @@ Install the project...
 ```
 
 ### 3. Install SPDK
+For Ubuntu 22.04, edit file ```~/spdk/scripts/pkgdep/debian.sh``` and change line ```...... libiscsi-dev python libncurses5-dev ......``` to ```...... libiscsi-dev python3 libncurses5-dev ......```
 ```
 cd ~/
 git clone https://github.com/spdk/spdk
@@ -65,12 +66,12 @@ make
 ```
 
 ### 4. Build sci-spdk-nvme.so library
-- Download source code via ```git clone https://github.com/StorWav/sci_spdk_nvme.git```.
+- Download source code via ```git clone https://github.com/StorWav/sci_spdk_nvme.git```. For Ubuntu 22.04 please make sure sync the latest code. GLIBC v2.35 is installed by 22.04 and it uses SYS_clone3 to create thread instead of SYS_clone, that causes segfault when loading sci-spdk-nvme library. The workaround is to return ENOSYS to SYS_clone3 forcing it to go back SYS_clone.
 - Enter ```~/spdk/examples/nvme/``` and copy the entire directory ```sci_spdk_nvme``` here.
 - Enter ```~/spdk/examples/nvme/sci_spdk_nvme``` and type ```make```
 - Type the following command
 ```
-cc sci_spdk.c spdk-nvme.so -lsyscall_intercept -pthread -fpic -shared -D_GNU_SOURCE -o sci-spdk-nvme.so
+cc sci_spdk.c -lsyscall_intercept -pthread -fpic -shared -D_GNU_SOURCE -o sci-spdk-nvme.so spdk-nvme.so
 ```
 - Two libraries ```spdk-nvme.so``` and ```sci-spdk-nvme.so``` are generated under directory ```~/spdk/examples/nvme/sci_spdk_nvme```
 
@@ -130,8 +131,6 @@ sudo LD_LIBRARY_PATH=. LD_PRELOAD=sci-spdk-nvme.so fio fiocfg
 - Backend ```spdk_nvme.c``` inherits codes from SPDK's native performance tool ```spdk/examples/nvme/perf/perf.c```. With native perf I can reach 18M IOPS (512-byte random read) and 13M IOPS (4K random read), however, ```LD_PRELOAD=sci-spdk-nvme.so fio fiocfg``` can only reach 14.5M and about 5-6M for 512-byte and 4K respectively. Will dig more to find out if it is something with my implementation or FIO related. I will also try out io_uring to find out if the same issue occurs.
 
 - At this moment sci-spdk-nvme requires each NVMe namespace residing on dedicated controller, for example, controller ```/dev/nvme0``` must have one and only one namespace ```/dev/nvme0n1```. Will add support for multi-namespaces on the same NVMe controller such as ```/dev/nvme0n2```, etc.
-
-- There seems to have an issue with Ubuntu latest LTS 22.04.
 
 
 For questions and issues please email me through czhu@nexnt.com
