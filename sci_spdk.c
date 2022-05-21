@@ -530,7 +530,7 @@ init(void)
 	sprintf(path, "sci-spdk-nvme-%ld.log", my_pid);
 
 	log_fd = (int)syscall_no_intercept(SYS_open,
-			path, O_CREAT | O_RDWR | /*O_APPEND*/O_TRUNC, (mode_t)0700);
+			path, O_CREAT | O_RDWR | /*O_APPEND*/O_TRUNC, (mode_t)0744);
 
 	if (log_fd < 0)
 		syscall_no_intercept(SYS_exit_group, 4);
