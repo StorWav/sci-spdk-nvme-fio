@@ -1,18 +1,18 @@
 # SCI-SPDK-NVMe: Syscall Interception for SPDK/NVMe
 
-sci-spdk-nvme.so is a useful library to intercept system call as well as memory allocation call and redirect them to SPDK/NVMe backend interfaces, achieving high IO performance without any modification to existing applications. The source code demonstrates how to intercept syscall/malloc associated with FIO. In short, several system calls from AIO and IO buffer pool allocation from FIO are intercepted and redirected to corresponding SPDK/NVMe APIs.
+sci-spdk-nvme.so is a library to intercept system call as well as memory allocation call and redirect them to SPDK/NVMe backend interfaces, achieving high IO performance without any modification to existing applications. The source code demonstrates how to intercept syscall/malloc associated with FIO. In short, several system calls from AIO and buffer pool allocation from FIO are intercepted and redirected to corresponding SPDK/NVMe APIs.
 
 The complete procedures to build and run sci-spdk-nvme enabled FIO is provided below. For more technical details please visit my Medium article [Boost NVMe IOPS from 4M to 14.5M via System Call Interception](https://medium.com/@colinzhu/boost-nvme-iops-from-4m-to-14-5m-via-system-call-interception-8e27da4aed9a)
 
-## Build Procedures for Ubuntu
-Following procedures have been tested for version 20.04.4 and 22.04. Some special tweaks are necessary for 22.04 (see step 3 and 4).
+## Build Procedures for Ubuntu (20.04.x and 22.04)
+Following procedures have been tested for LTS 20.04.4 and LTS 22.04. Some special tweaks are necessary for 22.04 (see step 4 and 5).
 
-### 0. Installation directories
-- Use your home directory ```~/``` (in my case is ```/home/czhu/```) to install ```syscall_intercept```, ```spdk```, and ```sci-spdk-nvme``` in the subsequent steps mentioned below.
-- Since root privilege is required to load ```sci-spdk-nvme.so``` (see step 6), optionally you can login as ```root``` and install everything under ```/root/``` directory.
+### 1. Installation directories
+- Use your home directory ```~/``` (in my case ```/home/czhu/```) to install ```syscall_intercept```, ```spdk```, and ```sci-spdk-nvme``` in the subsequent steps.
+- Since root privilege is required to load ```sci-spdk-nvme.so``` (see step 7), optionally you can login as ```root``` and install everything under ```/root/``` directory.
 - All the commands described in following steps assume you login as regular user such as ```czhu```.
 
-### 1. Install following packages if not available
+### 2. Install following packages if not available
 ```
 sudo apt-get install build-essential
 sudo apt-get install pkg-config
@@ -24,7 +24,7 @@ sudo apt-get install cmake
 sudo apt-get install fio
 ```
 
-### 2. Install syscall_intercept library
+### 3. Install syscall_intercept library
 - Get source codes:
 ```
 cd ~/
@@ -53,8 +53,14 @@ Install the project...
 -- Installing: /usr/local/share/man/man3/libsyscall_intercept.3
 ```
 
-### 3. Install SPDK
-For Ubuntu 22.04, edit file ```~/spdk/scripts/pkgdep/debian.sh``` and change line ```...... libiscsi-dev python libncurses5-dev ......``` to ```...... libiscsi-dev python3 libncurses5-dev ......```
+### 4. Install SPDK
+For Ubuntu 22.04, edit file ```~/spdk/scripts/pkgdep/debian.sh``` and 
+change line
+```...... libiscsi-dev python libncurses5-dev ......```
+to
+```...... libiscsi-dev python3 libncurses5-dev ......```
+before typing following commands.
+
 ```
 cd ~/
 git clone https://github.com/spdk/spdk
@@ -65,8 +71,9 @@ sudo ./scripts/pkgdep.sh
 make
 ```
 
-### 4. Build sci-spdk-nvme.so library
-- Download source code via ```git clone https://github.com/StorWav/sci_spdk_nvme.git```. For Ubuntu 22.04 please make sure sync the latest code. GLIBC v2.35 is installed by 22.04 and it uses SYS_clone3 to create thread instead of SYS_clone, that causes segfault when loading sci-spdk-nvme library. The workaround is to return ENOSYS to SYS_clone3 forcing it to go back SYS_clone.
+### 5. Build sci-spdk-nvme.so library
+- Download source code via ```git clone https://github.com/StorWav/sci_spdk_nvme.git```.
+For Ubuntu 22.04 please make sure sync the latest code. GLIBC v2.35 installed by 22.04 uses SYS_clone3 to create thread instead of SYS_clone, that causes segfault when loading sci-spdk-nvme library. The workaround is to return ENOSYS to SYS_clone3 forcing it to go back SYS_clone.
 - Enter ```~/spdk/examples/nvme/``` and copy the entire directory ```sci_spdk_nvme``` here.
 - Enter ```~/spdk/examples/nvme/sci_spdk_nvme``` and type ```make```
 - Type the following command
@@ -75,9 +82,9 @@ cc sci_spdk.c -lsyscall_intercept -pthread -fpic -shared -D_GNU_SOURCE -o sci-sp
 ```
 - Two libraries ```spdk-nvme.so``` and ```sci-spdk-nvme.so``` are generated under directory ```~/spdk/examples/nvme/sci_spdk_nvme```
 
-### 5. Install sci-spdk-nvme.o library
+### 6. Install sci-spdk-nvme.so library
 - Make testing directory in your home directory such as ```~/fio-sci-spdk/```
-- Enter the directory and make the following three links, assuming SPDK is in ```/home/czhu/spdk/```
+- Enter the directory and make the following two links, assuming SPDK root is in ```~/spdk/```
 ```
 ln -s ~/spdk/examples/nvme/sci_spdk_nvme/spdk-nvme.so spdk-nvme.so
 ln -s ~/spdk/examples/nvme/sci_spdk_nvme/sci-spdk-nvme.so sci-spdk-nvme.so
@@ -117,14 +124,14 @@ lrwxrwxrwx 1 czhu czhu  60 May 18 23:40 sci-spdk-nvme.so -> /home/czhu/spdk/exam
 -rw-r--r-- 1 czhu czhu 996 May 18 23:43 fiocfg
 ```
 
-### 6. Test with fio 
+### 7. Test with fio 
 - Configure SPDK NVMe devices by running ```sudo ~/spdk/scripts/setup.sh```. Root privilege is required to access DMA from user space. See [Direct Memory Access (DMA) From User Space](https://spdk.io/doc/memory.html). If you wish to run with non-privileges please check SPDK user guides.
-- Under ```~/fio-sci-spdk/``` or the testing directory created in step 5, run FIO with the following command:
+- Under ```~/fio-sci-spdk/``` or the testing directory created in step 6, run FIO with the following command:
 ```
 sudo LD_LIBRARY_PATH=. LD_PRELOAD=sci-spdk-nvme.so fio fiocfg
 ```
 
-### 7. Todo and known issues
+### 8. Todo and known issues
 
 - Will add scripts to auto generate ```fiocfg``` as well as those NVMe device files ```0000_##_00.0```. The script also attempts to pin each device file with the CPU (```cpus_allowed=```) that resides in the same NUMA node as the NVMe drive.
 
