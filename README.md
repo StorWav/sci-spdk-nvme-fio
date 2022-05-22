@@ -54,18 +54,14 @@ Install the project...
 ```
 
 ### 4. Install SPDK
-For Ubuntu 22.04, edit file ```~/spdk/scripts/pkgdep/debian.sh``` and 
-change line
-```...... libiscsi-dev python libncurses5-dev ......```
-to
-```...... libiscsi-dev python3 libncurses5-dev ......```
-before typing following commands.
-
 ```
 cd ~/
 git clone https://github.com/spdk/spdk
 cd spdk
 git submodule update --init
+```
+For Ubuntu 22.04, edit file ```~/spdk/scripts/pkgdep/debian.sh``` and change line ```...... libiscsi-dev python libncurses5-dev ......``` to ```...... libiscsi-dev python3 libncurses5-dev ......``` before typing  following commands.
+```
 sudo ./scripts/pkgdep.sh
 ./configure
 make
@@ -138,6 +134,8 @@ sudo LD_LIBRARY_PATH=. LD_PRELOAD=sci-spdk-nvme.so fio fiocfg
 - Backend ```spdk_nvme.c``` inherits codes from SPDK's native performance tool ```spdk/examples/nvme/perf/perf.c```. With native perf I can reach 18M IOPS (512-byte random read) and 13M IOPS (4K random read), however, ```LD_PRELOAD=sci-spdk-nvme.so fio fiocfg``` can only reach 14.5M and about 5-6M for 512-byte and 4K respectively. Will dig more to find out if it is something with my implementation or FIO related. I will also try out io_uring to find out if the same issue occurs.
 
 - At this moment sci-spdk-nvme requires each NVMe namespace residing on dedicated controller, for example, controller ```/dev/nvme0``` must have one and only one namespace ```/dev/nvme0n1```. Will add support for multi-namespaces on the same NVMe controller such as ```/dev/nvme0n2```, etc.
+
+- Possible issue with Ubuntu LTS 22.04: My testing server has 16 NVMe drives and SPDK fails initialize all the drives. No issues with LTS 20.04.x. Let me know if you have similar issue with 22.04. At this moment I suggest to run sci-spdk-nvme with 20.04.
 
 
 For questions and issues please email me through czhu@nexnt.com
