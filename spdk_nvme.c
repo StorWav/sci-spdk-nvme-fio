@@ -51,6 +51,8 @@
  */
 
 #pragma GCC diagnostic ignored "-Wmissing-declarations"
+#pragma GCC diagnostic ignored "-Wunused-result"
+#pragma GCC diagnostic ignored "-Wformat-truncation="
 
 #include "spdk/stdinc.h"
 #include "spdk/env.h"
@@ -72,11 +74,11 @@
 #include "sci_spdk_nvme.h"
 
 struct ctrlr_entry {
-	struct spdk_nvme_ctrlr				*ctrlr;
-	enum spdk_nvme_transport_type		trtype;
-	struct spdk_nvme_qpair				**unused_qpairs;
-	TAILQ_ENTRY(ctrlr_entry)			link;
-	char								name[1024];
+	struct spdk_nvme_ctrlr *ctrlr;
+	enum spdk_nvme_transport_type trtype;
+	struct spdk_nvme_qpair **unused_qpairs;
+	TAILQ_ENTRY(ctrlr_entry) link;
+	char name[1024];
 };
 
 enum entry_type {
@@ -88,64 +90,64 @@ enum entry_type {
 struct ns_fn_table;
 
 struct ns_entry {
-	enum entry_type					type;
-	const struct ns_fn_table		*fn_table;
+	enum entry_type type;
+	const struct ns_fn_table *fn_table;
 
 	union {
 		struct {
-			struct spdk_nvme_ctrlr	*ctrlr;
-			struct spdk_nvme_ns		*ns;
+			struct spdk_nvme_ctrlr *ctrlr;
+			struct spdk_nvme_ns *ns;
 		} nvme;
 	} u;
 
-	TAILQ_ENTRY(ns_entry)			link;
-	uint32_t						io_size_blocks;
-	uint32_t						num_io_requests;
-	uint64_t						size_in_ios;
-	uint32_t						block_size;
-	uint32_t						md_size;
-	bool							md_interleave;
-	unsigned int					seed;
-	bool							pi_loc;
-	enum spdk_nvme_pi_type			pi_type;
-	uint32_t						io_flags;
-	char							name[1024];
-	char							*dev_fn;	/* device file name */
+	TAILQ_ENTRY(ns_entry) link;
+	uint32_t io_size_blocks;
+	uint32_t num_io_requests;
+	uint64_t size_in_ios;
+	uint32_t block_size;
+	uint32_t md_size;
+	bool md_interleave;
+	unsigned int seed;
+	bool pi_loc;
+	enum spdk_nvme_pi_type pi_type;
+	uint32_t io_flags;
+	char name[1024];
+	char *dev_fn;	/* device file name */
 };
 
 struct ns_worker_ctx {
-	struct ns_entry						*entry;
-	uint64_t							current_queue_depth;
-	uint64_t							offset_in_ios;
-	bool								is_draining;
+	struct ns_entry *entry;
+	uint64_t current_queue_depth;
+	uint64_t offset_in_ios;
+	bool is_draining;
 
 	union {
 		struct {
-			int							num_active_qpairs;
-			int							num_all_qpairs;
-			struct spdk_nvme_qpair		**qpair;
-			struct spdk_nvme_poll_group	*group;
-			int							last_qpair;
+			int num_active_qpairs;
+			int num_all_qpairs;
+			struct spdk_nvme_qpair **qpair;
+			struct spdk_nvme_poll_group *group;
+			int last_qpair;
 		} nvme;
 	} u;
 
-	TAILQ_ENTRY(ns_worker_ctx)			link;
+	TAILQ_ENTRY(ns_worker_ctx) link;
 	
-	struct sci_ns_rings					*rings;
-	uint64_t							ctx_id;
-	int									cpu;
-	int									pool_idx;
+	struct sci_ns_rings *rings;
+	uint64_t ctx_id;
+	int cpu;
+	int pool_idx;
 };
 
 struct perf_task {
-	struct ns_worker_ctx	*ns_ctx;
-	struct iovec			*iovs;		/* array of iovecs to transfer. */
-	int						iovcnt;		/* Number of iovecs in iovs array. */
-	int						iovpos; 	/* Current iovec position. */
-	uint32_t				iov_offset; /* Offset in current iovec. */
-	uint64_t				submit_tsc;
-	bool					is_read;
-	struct spdk_dif_ctx		dif_ctx;
+	struct ns_worker_ctx *ns_ctx;
+	struct iovec *iovs;		/* array of iovecs to transfer. */
+	int iovcnt;				/* Number of iovecs in iovs array. */
+	int iovpos; 			/* Current iovec position. */
+	uint32_t iov_offset; 	/* Offset in current iovec. */
+	uint64_t submit_tsc;
+	bool is_read;
+	struct spdk_dif_ctx dif_ctx;
 
 	void *user_buf;
 	void *user_iocb;
@@ -165,9 +167,9 @@ struct perf_task {
 };
 
 struct worker_thread {
-	TAILQ_HEAD(, ns_worker_ctx)	ns_ctx;
-	TAILQ_ENTRY(worker_thread)	link;
-	unsigned			lcore;
+	TAILQ_HEAD(, ns_worker_ctx) ns_ctx;
+	TAILQ_ENTRY(worker_thread) link;
+	unsigned lcore;
 };
 
 struct ns_fn_table {
@@ -187,7 +189,7 @@ static int g_num_namespaces;
 static TAILQ_HEAD(, worker_thread) g_workers = TAILQ_HEAD_INITIALIZER(g_workers);
 static int g_num_workers = 0;
 static uint32_t g_main_core;
-static pthread_barrier_t g_worker_sync_barrier;
+//static pthread_barrier_t g_worker_sync_barrier;
 
 static uint64_t g_tsc_rate;
 
@@ -237,10 +239,10 @@ static pthread_mutex_t g_stats_mutex;
 static struct spdk_pci_addr g_allowed_pci_addr[MAX_ALLOWED_PCI_DEVICE_NUM];
 
 struct trid_entry {
-	struct spdk_nvme_transport_id	trid;
-	uint16_t						nsid;
-	char							hostnqn[SPDK_NVMF_NQN_MAX_LEN + 1];
-	TAILQ_ENTRY(trid_entry)			tailq;
+	struct spdk_nvme_transport_id trid;
+	uint16_t nsid;
+	char hostnqn[SPDK_NVMF_NQN_MAX_LEN + 1];
+	TAILQ_ENTRY(trid_entry) tailq;
 	char *dev_fn;
 };
 
@@ -320,13 +322,13 @@ static int spdk_get_fio_config(void)
 	
 	if (fio_q_depth > MAX_Q_DEPTH)
 	{
-		printf("[SPDK] ERROR: invalid queue_depth %d, must be [1,%d]\n", fio_q_depth, MAX_Q_DEPTH);
+		SCI_SPDK_LOG(DBG_ERR, 1, "[SPDK] ERROR: invalid queue_depth %d, must be [1,%d]\n", fio_q_depth, MAX_Q_DEPTH);
 		goto err;
 	}
 	
 	if (fio_io_align != 512 && fio_io_align != 4096)
 	{
-		printf("[SPDK] ERROR: invalid io_align %d, must be either 512 or 4096\n", fio_io_align);
+		SCI_SPDK_LOG(DBG_ERR, 1, "[SPDK] ERROR: invalid io_align %d, must be either 512 or 4096\n", fio_io_align);
 		goto err;
 	}
 	
@@ -350,7 +352,7 @@ static int spdk_get_fio_config(void)
 		{
 			if (job_stage % 3 != 0)
 			{
-				printf("[SPDK] ERROR: invalid job config, job(%d) missing %s, stage(%d) #\n",
+				SCI_SPDK_LOG(DBG_ERR, 1, "[SPDK] ERROR: invalid job config, job(%d) missing %s, stage(%d) #\n",
 					curr_job, (job_stage % 3) == 1 ? "filename=" : "cpu_allowed=", job_stage);
 				goto err;
 			}
@@ -361,7 +363,7 @@ static int spdk_get_fio_config(void)
 		{
 			if (job_stage % 3 != 1)
 			{
-				printf("[SPDK] ERROR: invalid job config, job(%d) missing %s, stage(%d) ##\n",
+				SCI_SPDK_LOG(DBG_ERR, 1, "[SPDK] ERROR: invalid job config, job(%d) missing %s, stage(%d) ##\n",
 					curr_job, (job_stage % 3) == 2 ? "[job#]" : "cpu_allowed=", job_stage);
 				goto err;
 			}
@@ -374,7 +376,7 @@ static int spdk_get_fio_config(void)
 		{
 			if (job_stage % 3 != 2)
 			{
-				printf("[SPDK] ERROR: invalid job config, job(%d) missing %s, stage(%d) ###\n",
+				SCI_SPDK_LOG(DBG_ERR, 1, "[SPDK] ERROR: invalid job config, job(%d) missing %s, stage(%d) ###\n",
 					curr_job, (job_stage % 3) == 0 ? "[job#]" : "filename=", job_stage);
 				goto err;
 			}
@@ -386,7 +388,7 @@ static int spdk_get_fio_config(void)
 	}
 	if (job_stage % 3 != 0)
 	{
-		printf("[SPDK] ERROR: invalid job config, job(%d) missing filename/cpu_allowed, stage(%d) ####\n",
+		SCI_SPDK_LOG(DBG_ERR, 1, "[SPDK] ERROR: invalid job config, job(%d) missing filename/cpu_allowed, stage(%d) ####\n",
 			curr_job, job_stage);
 		goto err;
 	}
@@ -399,8 +401,8 @@ static int spdk_get_fio_config(void)
 		struct nvme_dummy_dev_t *dev = &nvme_devs[i];
 		if (dev->cpu < 0)
 			continue;
-		//printf("[SPDK] nvme fs(%s) pci(%s) cpu(%d)\n",
-		//	dev->file_name, dev->pci_name, dev->cpu);
+		SCI_SPDK_LOG(DBG_INFO, -1, "[SPDK] nvme fs(%s) pci(%s) cpu(%d)\n",
+			dev->file_name, dev->pci_name, dev->cpu);
 	}
 		
 	return 0;
@@ -470,7 +472,7 @@ static int sci_req_q_send_task(struct ns_worker_ctx *ns_ctx, int io_size,
 	/* not free task entry filled yet */
 	if (ns_ctx->rings->req_q[ring_idx] == NULL)
 	{
-		printf("ERROR: sci_req_q_send_task NULL ring entry, ring_idx(%d)\n", ring_idx);
+		SCI_SPDK_LOG(DBG_ERR, -1, "ERROR: sci_req_q_send_task NULL ring entry, ring_idx(%d)\n", ring_idx);
 		//pthread_mutex_unlock(&ns_ctx->rings->req_q_lock);
 		return -1;
 	}
@@ -478,7 +480,7 @@ static int sci_req_q_send_task(struct ns_worker_ctx *ns_ctx, int io_size,
 	task = ns_ctx->rings->req_q[ring_idx];
 	if (task->state != SCI_TASK_FREE)	/* this shall not happen */
 	{
-		printf("ERROR: sci_req_q_in_task non-free ring entry (%d)\n", task->state);
+		SCI_SPDK_LOG(DBG_ERR, -1, "ERROR: sci_req_q_in_task non-free ring entry (%d)\n", task->state);
 		//pthread_mutex_unlock(&ns_ctx->rings->req_q_lock);
 		return -1;		
 	}
@@ -662,18 +664,18 @@ nvme_init_ns_worker_ctx(struct ns_worker_ctx *ns_ctx)
 					  sizeof(opts));
 		qpair = ns_ctx->u.nvme.qpair[i];
 		if (!qpair) {
-			printf("ERROR: spdk_nvme_ctrlr_alloc_io_qpair failed\n");
+			SCI_SPDK_LOG(DBG_ERR, 1, "ERROR: spdk_nvme_ctrlr_alloc_io_qpair failed\n");
 			goto qpair_failed;
 		}
 
 		if (spdk_nvme_poll_group_add(group, qpair)) {
-			printf("ERROR: unable to add I/O qpair to poll group.\n");
+			SCI_SPDK_LOG(DBG_ERR, 1, "ERROR: unable to add I/O qpair to poll group.\n");
 			spdk_nvme_ctrlr_free_io_qpair(qpair);
 			goto qpair_failed;
 		}
 
 		if (spdk_nvme_ctrlr_connect_io_qpair(entry->u.nvme.ctrlr, qpair)) {
-			printf("ERROR: unable to connect I/O qpair.\n");
+			SCI_SPDK_LOG(DBG_ERR, 1, "ERROR: unable to connect I/O qpair.\n");
 			spdk_nvme_ctrlr_free_io_qpair(qpair);
 			goto qpair_failed;
 		}
@@ -758,7 +760,7 @@ register_ns(struct spdk_nvme_ctrlr *ctrlr, struct spdk_nvme_ns *ns, char *dev_fn
 	cdata = spdk_nvme_ctrlr_get_data(ctrlr);
 
 	if (!spdk_nvme_ns_is_active(ns)) {
-		printf("Controller %-20.20s (%-20.20s): Skipping inactive NS %u\n",
+		SCI_SPDK_LOG(DBG_INFO, -1, "Controller %-20.20s (%-20.20s): Skipping inactive NS %u\n",
 		       cdata->mn, cdata->sn,
 		       spdk_nvme_ns_get_id(ns));
 		g_warn = true;
@@ -779,7 +781,7 @@ register_ns(struct spdk_nvme_ctrlr *ctrlr, struct spdk_nvme_ns *ns, char *dev_fn
 	}
 
 	if (ns_size < fio_io_size || sector_size > fio_io_size) {
-		printf("WARNING: controller %-20.20s (%-20.20s) ns %u has invalid "
+		SCI_SPDK_LOG(DBG_INFO, -1, "WARNING: controller %-20.20s (%-20.20s) ns %u has invalid "
 		       "ns size %" PRIu64 " / block size %u for I/O size %u\n",
 		       cdata->mn, cdata->sn, spdk_nvme_ns_get_id(ns),
 		       ns_size, spdk_nvme_ns_get_sector_size(ns), fio_io_size);
@@ -795,9 +797,9 @@ register_ns(struct spdk_nvme_ctrlr *ctrlr, struct spdk_nvme_ns *ns, char *dev_fn
 	 */
 	entries = (fio_io_size - 1) / max_xfer_size + 2;
 	if ((fio_q_depth * entries) > opts.io_queue_size) {
-		printf("controller IO queue size %u less than required\n",
+		SCI_SPDK_LOG(DBG_INFO, -1, "controller IO queue size %u less than required\n",
 		       opts.io_queue_size);
-		printf("Consider using lower queue depth or small IO size because "
+		SCI_SPDK_LOG(DBG_INFO, -1, "Consider using lower queue depth or small IO size because "
 		       "IO requests may be queued at the NVMe driver.\n");
 	}
 	/* For requests which have children requests, parent request itself
@@ -826,12 +828,12 @@ register_ns(struct spdk_nvme_ctrlr *ctrlr, struct spdk_nvme_ns *ns, char *dev_fn
 	entry->pi_loc = spdk_nvme_ns_get_data(ns)->dps.md_start;
 	entry->pi_type = spdk_nvme_ns_get_pi_type(ns);
 	
-	//printf("ns_size=%lu, sector_size=%d, entry->block_size=%d max_xfer_size=%d\n",
-	//	ns_size, sector_size, entry->block_size, max_xfer_size);
+	SCI_SPDK_LOG(DBG_INFO, -1, "[SPDK] ns_size=%lu, sector_size=%d, entry->block_size=%d max_xfer_size=%d\n",
+		ns_size, sector_size, entry->block_size, max_xfer_size);
 
 	if (spdk_nvme_ns_get_flags(ns) & SPDK_NVME_NS_DPS_PI_SUPPORTED) {
 		entry->io_flags = g_metacfg_pract_flag | g_metacfg_prchk_flags;
-		printf("WARNING: PI not supported\n");
+		SCI_SPDK_LOG(DBG_INFO, -1, "WARNING: PI not supported\n");
 		g_warn = true;
 		free(entry);
 		return;
@@ -847,7 +849,7 @@ register_ns(struct spdk_nvme_ctrlr *ctrlr, struct spdk_nvme_ns *ns, char *dev_fn
 	}
 
 	if (fio_io_size % entry->block_size != 0) {
-		printf("WARNING: IO size %u (-o) is not a multiple of nsid %u sector size %u."
+		SCI_SPDK_LOG(DBG_INFO, -1, "WARNING: IO size %u (-o) is not a multiple of nsid %u sector size %u."
 		       " Removing this ns from test\n", fio_io_size, spdk_nvme_ns_get_id(ns), entry->block_size);
 		g_warn = true;
 		free(entry);
@@ -865,7 +867,7 @@ register_ns(struct spdk_nvme_ctrlr *ctrlr, struct spdk_nvme_ns *ns, char *dev_fn
 	entry->dev_fn = dev_fn;
 	build_nvme_ns_name(entry->name, sizeof(entry->name), ctrlr, spdk_nvme_ns_get_id(ns));
 	
-	//printf("[SPDK] dev_fn(%s) entry_name(%s)\n", dev_fn, entry->name);
+	SCI_SPDK_LOG(DBG_INFO, -1, "[SPDK] dev_fn(%s) entry_name(%s)\n", dev_fn, entry->name);
 
 	g_num_namespaces++;
 	TAILQ_INSERT_TAIL(&g_namespaces, entry, link);
@@ -907,7 +909,7 @@ register_ctrlr(struct spdk_nvme_ctrlr *ctrlr, struct trid_entry *trid_entry)
 			if (ns == NULL) {
 				continue;
 			}
-			//printf("[SPDK] WARN: multiple ns for one trid_entry(%s)\n", trid_entry->dev_fn);
+			//SCI_SPDK_LOG(DBG_INFO, -1, "[SPDK] WARN: multiple ns for one trid_entry(%s)\n", trid_entry->dev_fn);
 			register_ns(ctrlr, ns, trid_entry->dev_fn);
 		}
 	} else {
@@ -965,7 +967,7 @@ task_complete(struct perf_task *task)
 	 * the one just completed.
 	 */
 	if (spdk_unlikely(ns_ctx->is_draining)) {
-		printf("task_complete: draining\n");
+		SCI_SPDK_LOG(DBG_INFO, -1, "task_complete: draining\n");
 		free(task->iovs);
 		free(task);
 	} else {
@@ -1047,25 +1049,24 @@ work_fn(void *arg)
 {
 	struct worker_thread *worker = (struct worker_thread *) arg;
 	struct ns_worker_ctx *ns_ctx = NULL;
-	int rc;
 	
-	//printf("   >>> work_fn entered: %p, lcore(%d)\n", worker, worker->lcore);
+	SCI_SPDK_LOG(DBG_INFO, -1, "   >>> work_fn entered: %p, lcore(%d)\n", worker, worker->lcore);
 
 	/* Allocate queue pairs for each namespace. */
 	TAILQ_FOREACH(ns_ctx, &worker->ns_ctx, link) {
 		if (init_ns_worker_ctx(ns_ctx) != 0) {
-			printf("ERROR: init_ns_worker_ctx() failed\n");
+			SCI_SPDK_LOG(DBG_ERR, 1, "ERROR: init_ns_worker_ctx() failed\n");
 			/* Wait on barrier to avoid blocking of successful workers */
-			pthread_barrier_wait(&g_worker_sync_barrier);
+			//pthread_barrier_wait(&g_worker_sync_barrier);
 			return 1;
 		}
 	}
 
-	rc = pthread_barrier_wait(&g_worker_sync_barrier);
-	if (rc != 0 && rc != PTHREAD_BARRIER_SERIAL_THREAD) {
-		printf("ERROR: failed to wait on thread sync barrier\n");
-		return 1;
-	}
+	//rc = pthread_barrier_wait(&g_worker_sync_barrier);
+	//if (rc != 0 && rc != PTHREAD_BARRIER_SERIAL_THREAD) {
+	//	printf("ERROR: failed to wait on thread sync barrier\n");
+	//	return 1;
+	//}
 
 	TAILQ_FOREACH(ns_ctx, &worker->ns_ctx, link)
 	{
@@ -1078,13 +1079,12 @@ work_fn(void *arg)
 		//break; DO NOT break
 	}
 
-	//printf("worker(%p) initial alloc task ready\n", worker);
 	return 0;
 }
 
 static void usage(char *param)
 {
-	printf("ERROR: invalid parameter for %s", param);
+	SCI_SPDK_LOG(DBG_ERR, 1, "ERROR: invalid parameter for %s", param);
 }
 
 static void
@@ -1136,7 +1136,7 @@ parse_args(struct spdk_env_opts *env_opts)
 	snprintf(core_mask_str, 24, "%llx", core_mask);
 	env_opts->core_mask = core_mask_str;
 	
-	//printf("[SPDK] core_mask=%s\n", env_opts->core_mask);
+	SCI_SPDK_LOG(DBG_INFO, -1, "[SPDK] core_mask=%s\n", env_opts->core_mask);
 	
 	for (int i=0; i<MAX_JOB_CNT; i++)
 	{
@@ -1153,7 +1153,7 @@ parse_args(struct spdk_env_opts *env_opts)
 			return 1;
 		}
 		
-		//printf("[SPDK] add_trid(%s)\n", trtype_str);		
+		SCI_SPDK_LOG(DBG_INFO, -1, "[SPDK] add_trid(%s)\n", trtype_str);		
 	}
 
 	if (!g_nr_io_queues_per_ns) {
@@ -1260,7 +1260,7 @@ attach_cb(void *cb_ctx, const struct spdk_nvme_transport_id *trid,
 	struct spdk_pci_id	pci_id;
 
 	if (trid->trtype != SPDK_NVME_TRANSPORT_PCIE) {
-		printf("Attached to NVMe over Fabrics controller at %s:%s: %s\n",
+		SCI_SPDK_LOG(DBG_INFO, -1, "Attached to NVMe over Fabrics controller at %s:%s: %s\n",
 		       trid->traddr, trid->trsvcid,
 		       trid->subnqn);
 	} else {
@@ -1275,7 +1275,7 @@ attach_cb(void *cb_ctx, const struct spdk_nvme_transport_id *trid,
 
 		pci_id = spdk_pci_device_get_id(pci_dev);
 
-		printf("[SPDK] Attached to NVMe Controller at %s [%04x:%04x]\n",
+		SCI_SPDK_LOG(DBG_INFO, -1, "[SPDK] Attached to NVMe Controller at %s [%04x:%04x]\n",
 		       trid->traddr,
 		       pci_id.vendor_id, pci_id.device_id);
 	}
@@ -1287,8 +1287,6 @@ static int
 register_controllers(void)
 {
 	struct trid_entry *trid_entry;
-
-	//printf("Initializing NVMe Controllers\n");
 
 	TAILQ_FOREACH(trid_entry, &g_trid_list, tailq) {
 		if (spdk_nvme_probe(&trid_entry->trid, trid_entry, probe_cb, attach_cb, NULL) != 0) {
@@ -1338,7 +1336,11 @@ associate_workers_with_ns(void)
 	struct ns_worker_ctx	*ns_ctx;
 	int			i, count;
 
-	count = g_num_namespaces > g_num_workers ? g_num_namespaces : g_num_workers;
+	/* one namespace on one core only */
+	//count = g_num_namespaces > g_num_workers ? g_num_namespaces : g_num_workers;
+	count = g_num_namespaces;
+		
+	SCI_SPDK_LOG(DBG_INFO, -1, "[SPDK] g_num_namespaces=%d\n", g_num_namespaces);
 
 	for (i = 0; i < count; i++) {
 		if (entry == NULL) {
@@ -1364,7 +1366,7 @@ associate_workers_with_ns(void)
 			return -1;
 		}
 
-		//printf("Associating %s with lcore %d\n", entry->name, worker->lcore);
+		SCI_SPDK_LOG(DBG_INFO, -1, "[SPDK] Associating %s with lcore %d\n", entry->name, worker->lcore);
 		ns_ctx->entry = entry;
 
 		ns_ctx->rings = calloc(1, sizeof(struct sci_ns_rings));
@@ -1376,7 +1378,7 @@ associate_workers_with_ns(void)
 		pthread_mutex_init(&ns_ctx->rings->rsp_q_lock, NULL);
 		ns_ctx->cpu = worker->lcore;
 		ns_ctx->pool_idx = i;
-		//printf("pool_idx(%d) assigned to ns_ctx(%p)\n", ns_ctx->pool_idx, ns_ctx);
+		SCI_SPDK_LOG(DBG_INFO, -1, "[SPDK] pool_idx(%d) assigned to ns_ctx(%p)\n", ns_ctx->pool_idx, ns_ctx);
 
 		TAILQ_INSERT_TAIL(&worker->ns_ctx, ns_ctx, link);
 
@@ -1388,7 +1390,14 @@ associate_workers_with_ns(void)
 
 	return 0;
 }
-
+/*
+   For Ubuntu 22.04 sleep() can't be called in init() constructor so I have to
+   do that in SYS_clone() in sci_spdk.c's hook function. Problem is SYS_clone()
+   wait until spdk_init_flag is set but thread nvme_poll_ctrlrs will get 
+   intercepted too, cauing SYS_clone() stuck forever. For now disabling this
+   part but need to retore it if non-PCIE is supported such as DMA
+*/
+#ifdef NON_PCIE
 static void *
 nvme_poll_ctrlrs(void *arg)
 {
@@ -1418,11 +1427,11 @@ nvme_poll_ctrlrs(void *arg)
 
 	return NULL;
 }
-
+#endif
 static void
 sig_handler(int signo)
 {
-	printf("[SPDK] WARN: (%d) received\n", signo);
+	SCI_SPDK_LOG(DBG_ERR, 1, "[SPDK] WARN: (%d) received\n", signo);
 	g_exit = true;
 }
 
@@ -1457,9 +1466,13 @@ void *spdk_get_buf_pool(int job_idx)
 int spdk_init(void)
 {
 	int rc;
-	struct worker_thread *worker, *main_worker;
+	struct worker_thread *worker;
 	struct spdk_env_opts opts;
 	pthread_t thread_id = 0;
+	
+	int cpu = -1;
+	getcpu(&cpu, NULL);
+	SCI_SPDK_LOG(DBG_INFO, -1, "[SPDK] spdk_init entered with cpu(%d)\n", cpu);
 	
 	rc = spdk_get_fio_config();
 	if (rc != 0)
@@ -1492,7 +1505,7 @@ int spdk_init(void)
 		goto cleanup;
 	}
 
-	//printf("Initializing SPDK memory pool\n");
+	SCI_SPDK_LOG(DBG_INFO, -1, "Initializing SPDK memory pool\n");
 	for (int i=0; i<MAX_JOB_CNT; i++)
 	{
 		struct nvme_dummy_dev_t *dev = &nvme_devs[i];
@@ -1504,10 +1517,9 @@ int spdk_init(void)
 			sci_buf_pool_4_fio[i] = buf;	
 		else 
 		{
-			printf("failed allocating %lu fio_buffer %d, buf=%p\n", spdk_dma_pool_size, i, buf);
+			SCI_SPDK_LOG(DBG_ERR, 1, "failed allocating %lu fio_buffer %d, buf=%p\n", spdk_dma_pool_size, i, buf);
 			goto cleanup;
 		}
-		//printf("testing allocating %lu buffer %d, buf=%p\n", spdk_dma_pool_size, i, buf);
 	}
 
 	g_tsc_rate = spdk_get_ticks_hz();
@@ -1523,7 +1535,7 @@ int spdk_init(void)
 	}
 
 	if (g_warn) {
-		printf("WARNING: Some requested NVMe devices were skipped\n");
+		SCI_SPDK_LOG(DBG_INFO, -1, "WARNING: Some requested NVMe devices were skipped\n");
 	}
 
 	if (g_num_namespaces == 0) {
@@ -1535,43 +1547,31 @@ int spdk_init(void)
 		fprintf(stderr, "Error message rate-limiting enabled across multiple threads.\n");
 		fprintf(stderr, "Error suppression count may not be exact.\n");
 	}
-
+#ifdef NON_PCIE
 	rc = pthread_create(&thread_id, NULL, &nvme_poll_ctrlrs, NULL);
 	if (rc != 0) {
 		fprintf(stderr, "Unable to spawn a thread to poll admin queues.\n");
 		goto cleanup;
 	}
+#endif
 
 	if (associate_workers_with_ns() != 0) {
 		rc = -1;
 		goto cleanup;
 	}
 
-	rc = pthread_barrier_init(&g_worker_sync_barrier, NULL, g_num_workers);
-	if (rc != 0) {
-		fprintf(stderr, "Unable to initialize thread sync barrier\n");
-		goto cleanup;
-	}
-
-	//printf("Initialization complete. Launching workers.\n");
+	//rc = pthread_barrier_init(&g_worker_sync_barrier, NULL, g_num_workers);
+	//if (rc != 0) {
+	//	fprintf(stderr, "Unable to initialize thread sync barrier\n");
+	//	goto cleanup;
+	//}
 
 	/* Launch all of the secondary workers */
 	g_main_core = spdk_env_get_current_core();
-	main_worker = NULL;
 	TAILQ_FOREACH(worker, &g_workers, link) {
-		if (worker->lcore != g_main_core) {
-			//printf("   >>> pin worker(%p) with lcore(%d) done\n", worker, worker->lcore);
-			spdk_env_thread_launch_pinned(worker->lcore, work_fn, worker);
-		} else {
-			assert(main_worker == NULL);
-			main_worker = worker;
-			//printf("   >>> main_worker(%p) (%d) assigned done\n", main_worker, main_worker->lcore);
-		}
+			rc = work_fn(worker);
+			SCI_SPDK_LOG(DBG_INFO, -1, "   >>> pin worker(%p) with lcore(%d) done, rc=%d\n", worker, worker->lcore, rc);
 	}
-	
-	//printf("   >>> issue work_fn for main_worker\n");
-	assert(main_worker != NULL);
-	rc = work_fn(main_worker);
 	
 	spdk_init_flag = 1;
 	
@@ -1591,14 +1591,8 @@ int spdk_init(void)
 		}
 	}
 
-	//for (int i=0; i<MAX_CPU_CNT; i++)
-	//{
-	//	if (workers_by_cpu[i] != NULL)
-	//		printf("workers_by_cpu[%d]: %p\n", i, workers_by_cpu[i]);
-	//}
-
 	spdk_env_thread_wait_all();
-	pthread_barrier_destroy(&g_worker_sync_barrier);
+	//pthread_barrier_destroy(&g_worker_sync_barrier);
 
 cleanup:
 	if (thread_id && pthread_cancel(thread_id) == 0) {
@@ -1651,6 +1645,10 @@ init(void)
 	   must setup here
 	*/
 	int rval;
+	int cpu = -1;
+	
+	getcpu(&cpu, NULL);
+	printf("[SPDK] entered constructor with cpu(%d)\n", cpu);
 	
 	/* initialize dummy nvme devices */
 	memset(nvme_devs, 0, sizeof(nvme_devs));
@@ -1659,7 +1657,7 @@ init(void)
 		nvme_devs[i].fd = -1;
 		nvme_devs[i].cpu = -1;
 	}
-	//printf("nvme_devs=%p\n", nvme_devs);
+	printf("[SPDK] nvme_devs=%p\n", nvme_devs);
 	
 	pthread_attr_t attr;
 	pthread_attr_init(&attr);
@@ -1669,12 +1667,14 @@ init(void)
 		fprintf(stderr, "[SPDK] ERROR: failed to launch spdk_init_thread\n");
 	pthread_attr_destroy(&attr);
 
-	//printf("[SPDK] constructor exited\n");
+	printf("[SPDK] exited constructor\n");
 }
 
 static __attribute__((destructor)) void
 deinit(void)
 {
+	printf("[SPDK] entered destructor\n");
+	
 	g_exit = true;
 		
 	if (spdk_init_thread_id && pthread_cancel(spdk_init_thread_id) == 0)
@@ -1695,4 +1695,6 @@ deinit(void)
 			sci_buf_pool_4_fio[i] = NULL;
 		}
 	}
+	
+	printf("[SPDK] exited destructor\n");
 }

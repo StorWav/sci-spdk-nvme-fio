@@ -84,6 +84,7 @@ cc sci_spdk.c -lsyscall_intercept -pthread -fpic -shared -D_GNU_SOURCE -o sci-sp
 ```
 ln -s ~/spdk/examples/nvme/sci_spdk_nvme/spdk-nvme.so spdk-nvme.so
 ln -s ~/spdk/examples/nvme/sci_spdk_nvme/sci-spdk-nvme.so sci-spdk-nvme.so
+ln -s /usr/local/lib/libsyscall_intercept.so libsyscall_intercept.so.0
 ```
 - Modify FIO config file ```fiocfg``` to reflect the correct NVMe devices discovered in your server:
 	* A sample ```fiocfg``` is in ```~/spdk/examples/nvme/sci_spdk_nvme/```.
@@ -101,6 +102,7 @@ After the above steps, the deployment directory ```~/fio-sci-spdk/```should look
 czhu@Ubuntu-T7920:~/fio-sci-spdk$ ls -lrt
 lrwxrwxrwx 1 czhu czhu  56 May 18 23:40 spdk-nvme.so -> /home/czhu/spdk/examples/nvme/sci_spdk_nvme/spdk-nvme.so
 lrwxrwxrwx 1 czhu czhu  60 May 18 23:40 sci-spdk-nvme.so -> /home/czhu/spdk/examples/nvme/sci_spdk_nvme/sci-spdk-nvme.so
+lrwxrwxrwx 1 czhu czhu  38 May 18 23:40 libsyscall_intercept.so.0 -> /usr/local/lib/libsyscall_intercept.so
 -rw-r--r-- 1 czhu czhu   0 May 18 23:42 0000_d8_00.0
 -rw-r--r-- 1 czhu czhu   0 May 18 23:42 0000_d7_00.0
 -rw-r--r-- 1 czhu czhu   0 May 18 23:42 0000_d6_00.0
@@ -131,11 +133,7 @@ sudo LD_LIBRARY_PATH=. LD_PRELOAD=sci-spdk-nvme.so fio fiocfg
 
 - Will add scripts to auto generate ```fiocfg``` as well as those NVMe device files ```0000_##_00.0```. The script also attempts to pin each device file with the CPU (```cpus_allowed=```) that resides in the same NUMA node as the NVMe drive.
 
-- Backend ```spdk_nvme.c``` inherits codes from SPDK's native performance tool ```spdk/examples/nvme/perf/perf.c```. With native perf I can reach 18M IOPS (512-byte random read) and 13M IOPS (4K random read), however, ```LD_PRELOAD=sci-spdk-nvme.so fio fiocfg``` can only reach 14.5M and about 5-6M for 512-byte and 4K respectively. Will dig more to find out if it is something with my implementation or FIO related. I will also try out io_uring to find out if the same issue occurs.
-
 - At this moment sci-spdk-nvme requires each NVMe namespace residing on dedicated controller, for example, controller ```/dev/nvme0``` must have one and only one namespace ```/dev/nvme0n1```. Will add support for multi-namespaces on the same NVMe controller such as ```/dev/nvme0n2```, etc.
-
-- Possible issue with Ubuntu LTS 22.04: My testing server has 16 NVMe drives and SPDK fails initialize all the drives. No issues with LTS 20.04.x. Let me know if you have similar issue with 22.04. At this moment I suggest to run sci-spdk-nvme with 20.04.
 
 
 For questions and issues please email me through czhu@nexnt.com

@@ -70,6 +70,9 @@
 
 #include "sci_spdk_nvme.h"
 
+#define likely(x)		__builtin_expect(!!(x), 1)
+#define unlikely(x)		__builtin_expect(!!(x), 0)
+
 static int log_fd = -1;
 static int hook_counter = 0;
 static long flags = -1;
@@ -101,10 +104,6 @@ static char ctx_id_holders[MAX_JOB_CNT];
 static pthread_mutex_t mem_alloc_lock;;
 static uint64_t fio_pool_size = 0;
 
-#define DBG_ERR		0x00000001	/* BIT_0 */
-#define DBG_INFO	0x00000002	/* BIT_1 */
-#define DBG_IO		0x00000004	/* BIG_2 */
-
 static uint32_t sci_debug_level = DBG_ERR|DBG_INFO;
 
 static inline int
@@ -112,7 +111,7 @@ sci_mask_match(uint32_t level)
 {
 	return (level > 0) && (level & sci_debug_level) == level;
 }
-static void SCI_SPDK_LOG(uint32_t level, int fd, const char *fmt, ...)
+void SCI_SPDK_LOG(uint32_t level, int fd, const char *fmt, ...)
 {
 	int len;
 	va_list ap;
@@ -132,10 +131,24 @@ static void SCI_SPDK_LOG(uint32_t level, int fd, const char *fmt, ...)
 	va_start(ap, fmt);
 	len = vsprintf(buf, fmt, ap);
 	va_end(ap);
+	
+	struct timeval tv;
+	struct tm newtime;
+	syscall_no_intercept(SYS_gettimeofday, &tv, NULL);
+	time_t ltime = tv.tv_sec;
+	localtime_r(&ltime, &newtime);
+    
+	char log_buf[len + 64];
+	sprintf(log_buf, "%04d.%02d.%02d_%02d:%02d:%02d_%06luus ",
+		newtime.tm_year+1900, newtime.tm_mon, newtime.tm_mday,
+		newtime.tm_hour, newtime.tm_min, newtime.tm_sec, tv.tv_usec);
+	strcat(log_buf, buf);
 
-	syscall_no_intercept(SYS_write, fd, buf, len);
+	if (fd < 0 && log_fd >= 0)
+		syscall_no_intercept(SYS_write, log_fd, log_buf, strlen(log_buf));
+	else 
+		syscall_no_intercept(SYS_write, fd, log_buf, strlen(log_buf));
 }
-
 static inline struct ctx_entry_t *find_ctx_entry(aio_context_t ctx)
 {
 	aio_context_t ctx0 = (aio_context_t)&ctx_id_holders[0];
@@ -289,6 +302,9 @@ static inline void sci_open_nvme(const char *file_name, int fd, const char *sysc
 
 static inline struct nvme_dummy_dev_t *sci_find_nvme(const char *file_name)
 {
+	if (strlen(file_name) == 0)
+		return NULL;
+	
 	struct nvme_dummy_dev_t *nvme_devs = spdk_get_nvme_devices();
 	
 	for (int i=0; i<MAX_JOB_CNT; i++)
@@ -327,6 +343,7 @@ static inline void sci_set_dev_stat(struct nvme_dummy_dev_t *dev, struct stat *s
 	stat->st_blocks = dev->ns_size/512;
 }
 
+static int collect_fio_config_done = 0;
 static int
 hook(long syscall_number,
 	long arg0, long arg1,
@@ -340,6 +357,31 @@ hook(long syscall_number,
 	(void) arg4;
 	(void) arg5;
 	(void) result;
+
+	/* Use whatever first syscall to collect mem pool size to redirect malloc()
+	   to spdk_nvme_zalloc(). This was done in init() constructor and it seems
+	   work fine with Ubuntu 20.04, but then in Ubuntu 22.04 can't use sleep()
+	   int constructor any more, so had to move those logics into syscall */
+	if (unlikely(!collect_fio_config_done))
+	{
+		int io_size = 0;
+		int q_depth = 0;
+		int io_align = 0;
+	
+		spdk_collect_fio_config(&io_size, &q_depth, &io_align, &fio_pool_size);
+		if (fio_pool_size == 0)
+		{
+			SCI_SPDK_LOG(DBG_INFO, 1, "[SCI] ERROR: failed to get fio_pool_size, io_size(%d), q_depth(%d), io_align(%d)\n",
+				io_size, q_depth, io_align);
+			syscall_no_intercept(SYS_exit_group, 4);
+		}
+		else 
+		{
+			SCI_SPDK_LOG(DBG_INFO, log_fd, "[SCI] io_size(%d), q_depth(%d), io_align(%d), fio_pool_size=%lu\n",
+				io_size, q_depth, io_align, fio_pool_size);
+		}
+		collect_fio_config_done = 1;
+	}
 
 	if (syscall_number == SYS_io_submit)
 	{
@@ -468,24 +510,47 @@ hook(long syscall_number,
 	}
 	else if (syscall_number == SYS_fstat)
 	{
-		//int cpu = -1;
-		//syscall_no_intercept(SYS_getcpu, &cpu, NULL, NULL);
+		int cpu = -1;
+		syscall_no_intercept(SYS_getcpu, &cpu, NULL, NULL);
 		//SCI_SPDK_LOG(DBG_INFO, log_fd, ">>> SYS_fstat: fd=%ld, cpu(%d)\n", arg0, cpu);
 	}
-	else if (syscall_number == SYS_clone)
+	else if (syscall_number == SYS_newfstatat)
+	{
+		struct nvme_dummy_dev_t *dev = sci_find_nvme((char *)arg1);
+		if (dev != NULL)
+		{
+			int cpu = -1;
+			struct stat *stat;
+			syscall_no_intercept(SYS_getcpu, &cpu, NULL, NULL);
+			*result = syscall_no_intercept(syscall_number, arg0, arg1, arg2, arg3);
+			if (*result == 0)
+			{
+				stat = (struct stat *)arg2;
+				sci_set_dev_stat(dev, stat);
+			}
+			SCI_SPDK_LOG(DBG_INFO, log_fd, ">>> SYS_newfstatat: filename(%s), cpu(%d), stats(%lu,%lu,%lu)\n", 
+				(char *)arg1, cpu, stat->st_size, stat->st_blksize, stat->st_blocks);
+			return 0;
+		}
+	}
+	else if (syscall_number == SYS_clone || syscall_number == SYS_clone3)
 	{
 		int cpu = -1;
 		int status = syscall_no_intercept(SYS_getcpu, &cpu, NULL, NULL);
+		
+		while (!spdk_check_init_status())
+		{
+			SCI_SPDK_LOG(DBG_INFO, log_fd, ">>> %s: waiting...\n", syscall_number == SYS_clone ? "SYS_clone" : "SYS_clone3");
+			struct timespec t;
+			t.tv_sec = 2;
+			t.tv_nsec = 0;		
+			syscall_no_intercept(SYS_nanosleep, &t, NULL);
+		}
 
 		if (arg1 != 0)
 			flags = arg0;
 		
 		SCI_SPDK_LOG(DBG_INFO, log_fd, ">>> SYS_clone: pid(%p) child(%p), cpu(%d)\n", (void *)arg2, (void *)arg3, cpu);
-	}
-	else if (syscall_number == SYS_clone3)
-	{
-		*result = -ENOSYS;
-		return 0;
 	}
 
 	return 1;
@@ -502,27 +567,9 @@ init(void)
 {
 	char path[256];
 	int i;
+	int cpu = -1;
 
-	int io_size = 0;
-	int q_depth = 0;
-	int io_align = 0;
-
-	/* wait untill spdk-nvme.so init done */
-	while (!spdk_check_init_status())
-		sleep(1);
-	
-	spdk_collect_fio_config(&io_size, &q_depth, &io_align, &fio_pool_size);
-	if (fio_pool_size == 0)
-	{
-		printf("[SCI] ERROR: failed to get fio_pool_size, io_size(%d), q_depth(%d), io_align(%d)\n",
-			io_size, q_depth, io_align);
-		syscall_no_intercept(SYS_exit_group, 4);
-	}
-	else 
-	{
-		printf("[SCI] io_size(%d), q_depth(%d), io_align(%d), fio_pool_size=%lu\n",
-			io_size, q_depth, io_align, fio_pool_size);
-	}
+	syscall_no_intercept(SYS_getcpu, &cpu, NULL, NULL);
 	
 	pthread_mutex_init(&mem_alloc_lock, NULL);
         
@@ -538,9 +585,13 @@ init(void)
 			path, O_CREAT | O_RDWR | /*O_APPEND*/O_TRUNC, (mode_t)0744);
 
 	if (log_fd < 0)
+	{
+		fprintf(stderr, "[SCI] ERROR: failed to open log file(%s)\n", path);
 		syscall_no_intercept(SYS_exit_group, 4);
+	}
 
-	SCI_SPDK_LOG(DBG_INFO, log_fd, "log_fd = %u, hook_cnt = %d\n", (unsigned int)log_fd, hook_counter++);
+	printf("[SCI] entered constructor with cpu(%d), log_fd(%u), hook_cnt(%d)\n", 
+		cpu, (unsigned int)log_fd, hook_counter++);
 	
 	/* initialize global context stuff */
 	memset((void *)ctxs, 0, sizeof(ctxs));
@@ -554,18 +605,32 @@ init(void)
 		ctxs[i].cpu = -1;
 		ctxs[i].spdk_dev_idx = -1;
 	}
-	
+
 	pthread_mutex_init(&ctx_entry_lock, NULL);
 
 	intercept_hook_point = hook;
 	intercept_hook_point_clone_child = hook_child;
+	
+	printf("[SCI] exited constructor\n");
 }
 
 static __attribute__((destructor)) void
 deinit(void)
 {
+	printf("[SCI] entered destructor\n");
+	
 	pthread_mutex_destroy(&ctx_entry_lock);	
 	pthread_mutex_destroy(&mem_alloc_lock);	
+	
+	printf("[SCI] closing log file fd(%d)\n", log_fd);
+	
+	if (log_fd != -1)
+	{
+		syscall_no_intercept(SYS_close, log_fd);
+		log_fd = -1;
+	}
+	
+	printf("[SCI] exited destructor\n");
 }
 
 /*-

@@ -45,7 +45,7 @@ const char *FIO_CONF_FILE = "fiocfg";
 const char *SCI_SPDK_DBG_ENV = "SCI_SPDK_DEBUG_LEVEL";
 
 #define MAX_JOB_CNT			64		/* one fio job for each nvme, max 64 nvme devices */
-#define MAX_NVME_NAME_LEN	15		/* max dummy nvme file name length */
+#define MAX_NVME_NAME_LEN	31		/* max dummy nvme file name length */
 #define MAX_CPU_CNT			64		/* max number of cores, increase the value if needed */
 
 #define MAX_Q_DEPTH			512
@@ -72,5 +72,10 @@ struct nvme_dummy_dev_t {
 	uint64_t ns_size;
 	uint32_t sector_size;
 };
+
+#define DBG_ERR		0x00000001	/* BIT_0 */
+#define DBG_INFO	0x00000002	/* BIT_1 */
+#define DBG_IO		0x00000004	/* BIG_2 */
+extern void SCI_SPDK_LOG(uint32_t level, int fd, const char *fmt, ...);
 
 #endif	/* _SCI_SPDK_NVME_H */
